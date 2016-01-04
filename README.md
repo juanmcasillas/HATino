@@ -16,3 +16,10 @@ pcb HOW-TO info) and software (ARDUINO custom firmware and modifications, Blueto
 to get a complete, OpenSource system. The software is based on FuraX49' code, and some of the 
 examples on i2clib for arduino.
 
+Libraries:
+
+I2Cdev			https://github.com/jrowberg/i2cdevlib.git
+Wire			(included)
+SoftwareSerial	(included)
+
+For information on installing libraries, see: http://arduino.cc/en/Guide/Libraries
