@@ -25,3 +25,13 @@ Wire			(included)
 SoftwareSerial	(included)
 
 For information on installing libraries, see: http://arduino.cc/en/Guide/Libraries
+
+
+Based on hatire source code (by FuraX49):
+
+http://sourceforge.net/projects/hatire/files/ARDUINO/MPU6050/HAT_100.ino/download
+
+
+LocalFile                       GIT
+-----------------------------------------------------------------------------------------
+HAT_gy521_wip_bt.ino            HATino.ino
