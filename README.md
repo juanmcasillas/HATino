@@ -19,7 +19,9 @@ examples on i2clib for arduino.
 Libraries:
 
 I2Cdev			https://github.com/jrowberg/i2cdevlib.git
+
 Wire			(included)
+
 SoftwareSerial	(included)
 
 For information on installing libraries, see: http://arduino.cc/en/Guide/Libraries
