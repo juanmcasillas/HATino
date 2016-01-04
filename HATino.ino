@@ -5,16 +5,37 @@
 //   http://facetracknoir.sourceforge.net/home/default.htm	
 // I2C device class (I2Cdev)
 //   https://github.com/jrowberg/i2cdevlib
+//
+// Some fixes done by Juan M. Casillas <juan,.casillas@gmail.com>
+// Code cleanup, Serial fixes and porting to Arduino Micro.
+//
+//          ARDUINOMICRO GY-521
+//          -------------------------------
+// PINOUT:  SDA (D2)      SDA
+//          SCL (D3)      SCL
+//          5V            VCC
+//          GND           GND
+//                        XDA Not connected
+//                        XCL Not Connected
+//                        ADO Not Connected (my board, low, i2c address 0x68. High, 0x69)
+//                        INT Not Connected
+// 
+//  NO PULLOUT resistors in SDA, SCL
+//
 
 
 #include <avr/eeprom.h>
 #include <Wire.h>
 #include "I2Cdev.h"
-#include "MPU6050_9Axis_MotionApps41.h"
+#include "MPU6050_6Axis_MotionApps20.h"
+#include <SoftwareSerial.h>
 
+//#define DEBUG_JMC 1
+
+#define BTSERIAL 1
 
 MPU6050 mpu;
-
+SoftwareSerial BTSerial(8, 9); // RX | TX
 
 typedef struct  {
   int16_t  Begin  ;   // 2  Debut
@@ -49,7 +70,8 @@ uint16_t fifoCount;     // count of all bytes currently in FIFO
 uint8_t fifoBuffer[64]; // FIFO storage buffer
 
 char Commande;
-char Version[] = "HAT V 1.00";
+char Version[] = "HAT V 1.10";
+const byte      INTERRUPT_PINNUMBER = 7;                    // where the INT is attached. Varies from Arduinos
 
 // orientation/motion vars
 Quaternion q;           // [w, x, y, z]         quaternion container
@@ -83,16 +105,24 @@ void dmpDataReady() {
 // ================================================================
 // ===               PRINT SERIAL FORMATTE                      ===
 // ================================================================
-void PrintCodeSerial(uint16_t code,char Msg[24],bool EOL ) {
+void PrintCodeSerial(uint16_t code,const char Msg[24],bool EOL ) {
   msginfo.Code=code;
   memset(msginfo.Msg,0x00,24);
   strcpy(msginfo.Msg,Msg);
   if (EOL) msginfo.Msg[23]=0x0A;
   // Send HATIRE message to  PC
-  Serial.write((byte*)&msginfo,30);
+  
+
+#ifndef BTSERIAL
+    Serial.write((byte*)&msginfo,30);
+#else
+    BTSerial.write((byte*)&msginfo,30);
+  #endif
 }
 
 
+   
+  
 // ================================================================
 // ===                      INITIAL SETUP                       ===
 // ================================================================
@@ -100,11 +130,41 @@ void PrintCodeSerial(uint16_t code,char Msg[24],bool EOL ) {
 void setup() {
   // join I2C bus (I2Cdev library doesn't do this automatically)
   Wire.begin();
+  TWBR = 24;      
+  // put the i2c bus at 200kHz to prevent buffer Overflow Don't work so much.
+  // problems are related with the SERIAL port (to low)
+  // try to write less packets.
 
   // initialize serial communication
-  while (!Serial); // wait for Leonardo enumeration, others continue immediately
 
-  Serial.begin(115200);
+#ifndef BTSERIAL
+  Serial.begin(115200); // max speed supported by OpenTrack
+  while (!Serial); // wait for Leonardo enumeration, others continue immediately
+#else
+  // BT INIT
+  
+  pinMode(10, OUTPUT);  // this pin will pull the HC-05 pin 34 (key pin) HIGH to switch module to AT mode
+  // unconnect it or set it to low.
+  digitalWrite(10, LOW);
+  BTSerial.begin(115200);  // HC-05 default speed in AT command more
+#endif  
+  
+  //Serial.begin(115200);
+  //Serial.begin(230440); // runs smooth
+  
+
+  // From arduino manual
+  // The default is 8 data bits, no parity, one stop bit.
+  // baudrate:  115200
+  // data bits: 8
+  // parity:  None
+  // stop bit: 1
+  // Flow-Control:  None.
+  
+  
+  
+  
+  
   PrintCodeSerial(2000,Version,true);
 
   hatire.Begin=0xAAAA;
@@ -130,25 +190,50 @@ void setup() {
 
   while (Serial.available() && Serial.read()); // empty buffer
 
+  mpu.setFullScaleGyroRange(MPU6050_GYRO_FS_250);
+  mpu.setFullScaleAccelRange(MPU6050_ACCEL_FS_2);
   // load and configure the DMP
   PrintCodeSerial(3004,"Initializing DMP...",true);
   devStatus = mpu.dmpInitialize();
 
+  // JMC. Set the offsets for this thing (from MPU6050_DMP6 demo program)
+
+  mpu.setXGyroOffset(220);
+  mpu.setYGyroOffset(76);
+  mpu.setZGyroOffset(-85);
+  mpu.setZAccelOffset(1788); // 1688 factory default for my test chip
+
+
+ 
   // make sure it worked (returns 0 if so)
   if (devStatus == 0) {
     dmpLoaded=true;
 
     // Read Epprom saved params
     PrintCodeSerial(3005,"Reading saved params...",true);
-    ReadParams();
+    //ReadParams();
 
+    mpu.setXGyroOffset(68);
+    mpu.setYGyroOffset(-8); 
+    mpu.setZGyroOffset(12);
+    mpu.setXAccelOffset(-257); // 1688 factory default for my test chip
+    mpu.setYAccelOffset(638); // 1688 factory default for my test chip
+    mpu.setZAccelOffset(1220); // 1688 factory default for my test chip
+    
     // turn on the DMP, now that it's ready
     PrintCodeSerial(3006,"Enabling DMP...",true);
     mpu.setDMPEnabled(true);
 
     // enable Arduino interrupt detection
     PrintCodeSerial(3007,"Enabling interrupt",true);
-    attachInterrupt(0, dmpDataReady, RISING);
+    // jmc ¿ what pin ? you should point to the required one
+    // INT0 -> SCL in Micro. D3
+    // INT1 -> SDA           D2 
+    // INT2 -> TX (Serial)   RX1 
+    // INT3 -> RX (Serial)   TX1
+    // INT4 ??? 
+     
+    attachInterrupt(digitalPinToInterrupt(INTERRUPT_PINNUMBER), dmpDataReady, RISING);
     mpuIntStatus = mpu.getIntStatus();
 
     // set our DMP Ready flag so the main loop() function knows it's okay to use it
@@ -156,12 +241,16 @@ void setup() {
     dmpReady = true;
     // get expected DMP packet size for later comparison
     packetSize = mpu.dmpGetFIFOPacketSize();    
+
+    // JMC this is NOT in the example -- remove it
     // Empty FIFO
-    fifoCount = mpu.getFIFOCount();
+    /*
+    fifoCount = mpu.getFIFOCount();  
     while (fifoCount > packetSize) {
       fifoCount = mpu.getFIFOCount();
       mpu.getFIFOBytes(fifoBuffer, fifoCount);
     }
+    */
   } 
   else {
     // ERROR!
@@ -260,22 +349,22 @@ void serialEvent(){
     break;      
 
   case 'I':
-  	Serial.println();
-  	Serial.print("Version : \t");
-    Serial.println(Version);
-    Serial.println("Gyroscopes offsets");
+  	BTSerial.println();
+  	BTSerial.print("Version : \t");
+    BTSerial.println(Version);
+    BTSerial.println("Gyroscopes offsets");
     for (int i=0; i <= 2; i++) {
-  	  Serial.print(i);
-  	  Serial.print(" : ");
-    	Serial.print(eprom_save.gyro_offset[i]);
-  	  Serial.println();
+  	  BTSerial.print(i);
+  	  BTSerial.print(" : ");
+    	BTSerial.print(eprom_save.gyro_offset[i]);
+  	  BTSerial.println();
     }
-    Serial.println("Accelerometers offsets");
+    BTSerial.println("Accelerometers offsets");
     for (int i=0; i <= 2; i++) {
-  	  Serial.print(i);
-  	  Serial.print(" : ");
-    	Serial.print(eprom_save.acc_offset[i]);
-  	  Serial.println();
+  	  BTSerial.print(i);
+  	  BTSerial.print(" : ");
+    	BTSerial.print(eprom_save.acc_offset[i]);
+  	  BTSerial.println();
     }
     break;      
 
@@ -332,6 +421,8 @@ void loop() {
       mpu.dmpGetGravity(&gravity, &q);
       mpu.dmpGetYawPitchRoll(hatire.gyro, &q, &gravity);
 
+ 
+
       // Get real acceleration, adjusted to remove gravity
       // not used in this script
       // mpu.dmpGetAccel(&aa, fifoBuffer);
@@ -357,13 +448,28 @@ void loop() {
       }
 
 
-      // Conversion angles Euler en +-180 Degr�es
+
+      // adjust board position. By default works if the GY-521 board is set flat (chip and led facing up)
+      // and pin solders facing to right. far pin should be INT, near pin should be VCC. X Asis is the 
+      // board plane, Y axis the perpendicular to it.
+      
+      // if you want rotate the board 90 ANTICLOCKWISE you should add + PI/2 angle to X (add it in degrees)
+
+      // rotate 90 to LEFT (ANTICLOCWISE)
+
+        hatire.gyro[0] += PI/2;
+
+
+      // Conversion angles Euler en +-180 Degrees
       for (int i=0; i <= 2; i++) {
         hatire.gyro[i]= (hatire.gyro[i] - eprom_save.gyro_offset[i] ) * Rad2Deg;
         if  (hatire.gyro[i]>180) {
           hatire.gyro[i] = hatire.gyro[i] - 360;
         }
       }
+
+
+
 
       if (AskCalibrate) {
         hatire.gyro[0] = 0; 
@@ -374,8 +480,16 @@ void loop() {
         hatire.acc[2] = 0;
       }
 
+
+
       // Send Trame to HATIRE PC
-      Serial.write((byte*)&hatire,30);
+      // DEBUG THE THING
+#ifndef BTSERIAL
+        Serial.write((byte*)&hatire,30);
+#else
+        BTSerial.write((byte*)&hatire,30);    
+      #endif
+      
 
       hatire.Cpt++;
       if (hatire.Cpt>999) {
