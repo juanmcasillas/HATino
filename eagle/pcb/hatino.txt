@@ -1,0 +1,19 @@
+EAGLE Libraries used:
+
+testpad	16  (builtin)
+SparkFun-Connectors	3 (https://github.com/sparkfun/SparkFun-Eagle-Libraries/blob/master/SparkFun-Connectors.lbr)   
+PACKAGE	Quant.
+P1-13Y	16  
+1X17	2   
+1X08_ROUND	1   
+
+DEVICE	Quant.
+TPPAD1-13Y	16  
+M17	2   
+M08	1   
+
+Useful libraries:
+
+Arduino Micro https://github.com/darbs/Eagle/blob/master/arduino-micro.lbr
+GY-521		  http://www.diymodules.org/eagle-show-library?type=usr&id=1012210927
+HC-05		  https://github.com/ErichStyger/mcuoneclipse/blob/master/Eagle/Library/Bluetooth%20HC-05.lbr
