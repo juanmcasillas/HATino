@@ -387,7 +387,7 @@ void loop() {
   if (dmpReady)  { 
 
 
-    while (!mpuInterrupt && fifoCount < packetSize) ;
+    while ((!mpuInterrupt) && (fifoCount < packetSize)) ;
 
     // reset interrupt flag and get INT_STATUS byte
     mpuInterrupt = false;
